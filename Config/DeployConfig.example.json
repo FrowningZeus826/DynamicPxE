@@ -1,0 +1,55 @@
+{
+  "_comment": "Dell Image Assist - Deployment Configuration",
+  "_version": "1.0",
+  "_notes": [
+    "Copy this file to DeployConfig.json and fill in your environment settings.",
+    "DeployConfig.json is excluded from the repository - this example file is the template.",
+    "",
+    "ShareRoot: UNC path to your deployment share.",
+    "DriveLetter: Drive letter to map the share to in WinPE (Z: recommended).",
+    "ImagesSubfolder: Subfolder under ShareRoot containing WIM files.",
+    "DriversSubfolder: Subfolder under ShareRoot containing driver ZIPs.",
+    "AppTitle: Displayed in the title bar and window caption.",
+    "AppVersion: Displayed in the status bar.",
+    "OrgName: Your organization name.",
+    "BuildLabel: Displayed in the title bar next to the app title.",
+    "DefaultDomainPrefix: Pre-fills the username field (e.g. DOMAIN\\).",
+    "Timezone: Must match a valid Windows timezone name (run tzutil /l for list).",
+    "DefaultImageIndex: 2 for Dell Image Assist WIMs, 1 for standard WIMs.",
+    "DefaultTargetDisk: Physical disk number to image (0 = first disk).",
+    "AutoRebootSeconds: Countdown before auto-reboot after deployment.",
+    "LogoPath: Optional PNG logo file path in WinPE (leave empty to disable).",
+    "IconPath: Optional ICO file path in WinPE (leave empty to disable).",
+    "AccentColorR/G/B: RGB values for the accent color used on buttons."
+  ],
+
+  "Network": {
+    "ShareRoot":        "\\\\your-server\\your-share",
+    "DriveLetter":      "Z:",
+    "ImagesSubfolder":  "Images",
+    "DriversSubfolder": "Drivers"
+  },
+
+  "App": {
+    "AppTitle":            "Dell Image Assist",
+    "AppVersion":          "1.0",
+    "OrgName":             "Your Organization",
+    "BuildLabel":          "WinPE 11  ADK 26100",
+    "DefaultDomainPrefix": "DOMAIN\\"
+  },
+
+  "Deployment": {
+    "DefaultImageIndex":  2,
+    "DefaultTargetDisk":  0,
+    "Timezone":           "Eastern Standard Time",
+    "AutoRebootSeconds":  15
+  },
+
+  "Branding": {
+    "LogoPath":     "",
+    "IconPath":     "",
+    "AccentColorR": 0,
+    "AccentColorG": 120,
+    "AccentColorB": 212
+  }
+}

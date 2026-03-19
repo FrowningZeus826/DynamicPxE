@@ -1,0 +1,39 @@
+# ============================================================
+#  Dell Image Assist - WinPE Deployment Tool
+#  .gitignore
+# ============================================================
+
+# ── Build outputs ─────────────────────────────────────────────
+boot.wim
+*.wim
+Build/
+
+# ── Dell WinPE drivers (large, extracted from CAB)
+DellWinPEDrivers/
+
+# ── Site-specific config (contains sensitive environment info)
+# Copy DeployConfig.example.json  -> DeployConfig.json  and fill in your settings
+# Copy DellDriverMap.example.json -> DellDriverMap.json and add any overrides needed
+Config/DeployConfig.json
+Config/DellDriverMap.json
+
+# ── Branding assets (org-specific, not for public repo)
+Resources/*.png
+Resources/*.ico
+Resources/*.jpg
+Resources/*.bmp
+
+# Keep the README in Resources
+!Resources/README.txt
+
+# ── Windows junk ──────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+*.tmp
+
+# ── PowerShell ────────────────────────────────────────────────
+*.ps1xml
+
+# ── Editor files ──────────────────────────────────────────────
+.vscode/
+*.code-workspace
