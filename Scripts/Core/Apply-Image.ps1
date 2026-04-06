@@ -1,51 +1,56 @@
 # ============================================================
 #  Apply-Image.ps1
 #  Partitions the target disk and applies a WIM/SWM using DISM
-#  Designed for UEFI systems (GPT + EFI + MSR + OS + Recovery)
+#  Designed for UEFI systems (GPT + EFI + MSR + OS)
+#  Follows Microsoft's recommended GPT layout for Windows Setup
 # ============================================================
 
 function Invoke-DiskPrep {
     <#
     .SYNOPSIS
-        Initializes target disk with UEFI-compatible GPT layout.
+        Initializes target disk with the standard Microsoft UEFI/GPT layout.
+        Creates EFI (100MB) + MSR (16MB) + OS (remaining).
+        No recovery partition — Windows Setup creates WinRE automatically.
     .PARAMETER DiskNumber
         Physical disk number (default: 0)
+    .PARAMETER OSDrive
+        Drive letter for OS partition during WinPE (default: W)
     .OUTPUTS
         PSCustomObject with OSDriveLetter, EFIPartition, Success
     #>
     [CmdletBinding()]
     param(
         [int]$DiskNumber    = 0,
-        [string]$OSDrive    = "W"   # Drive letter for OS partition during WinPE
+        [string]$OSDrive    = "W"
     )
 
-    Write-LogInfo -Msg "Preparing disk $DiskNumber (UEFI/GPT layout)" -Comp "DiskPrep"
+    Write-LogInfo -Msg "Preparing disk $DiskNumber (UEFI/GPT - Microsoft standard layout)" -Comp "DiskPrep"
 
-    # Build diskpart script
+    # Standard Microsoft GPT layout:
+    #   1. EFI System Partition  - 100MB FAT32 (boot files)
+    #   2. MSR                   - 16MB (Windows reserved)
+    #   3. OS Primary            - remaining disk (NTFS, Windows install)
+    # No recovery partition — Windows Setup creates WinRE during specialize.
+    # Using shrink+recovery caused specialize failures because the OEM-style
+    # layout conflicted with Windows Setup's expected partition structure.
+
     $dpScript = @"
 select disk $DiskNumber
 clean
 convert gpt
 
-rem -- EFI System Partition (260MB, FAT32)
-create partition efi size=260
+rem -- EFI System Partition (100MB, FAT32)
+create partition efi size=100
 format quick fs=fat32 label="System"
 assign letter=S
 
 rem -- Microsoft Reserved (16MB)
 create partition msr size=16
 
-rem -- OS Partition (remaining space minus 650MB for recovery)
+rem -- OS Partition (all remaining space)
 create partition primary
-shrink minimum=650
 format quick fs=ntfs label="Windows"
 assign letter=$OSDrive
-
-rem -- Recovery Partition (650MB)
-create partition primary
-format quick fs=ntfs label="Recovery"
-set id=de94bba4-06d1-4d40-a16a-bfd50179d6ac
-gpt attributes=0x8000000000000001
 
 list partition
 "@
@@ -53,7 +58,8 @@ list partition
     $dpFile = "$env:TEMP\diskpart_prep.txt"
     $dpScript | Set-Content -Path $dpFile -Encoding ASCII
 
-    Write-LogDebug -Msg "Running diskpart..." -Comp "DiskPrep"
+    Write-LogDebug -Msg "Running diskpart script..." -Comp "DiskPrep"
+    Write-LogDebug -Msg "Layout: EFI(100MB) + MSR(16MB) + OS(remaining) on disk $DiskNumber" -Comp "DiskPrep"
     $dpOut = diskpart /s $dpFile 2>&1
     Write-LogDebug -Msg $dpOut -Comp "DiskPrep"
 
@@ -61,6 +67,13 @@ list partition
 
     if ($LASTEXITCODE -ne 0) {
         Write-LogError -Msg "diskpart failed with exit code $LASTEXITCODE" -Comp "DiskPrep"
+        return [PSCustomObject]@{ Success = $false; OSDriveLetter = $null; EFIPartition = $null }
+    }
+
+    # Verify the OS partition is accessible
+    $osDrivePath = "${OSDrive}:\"
+    if (-not (Test-Path $osDrivePath)) {
+        Write-LogError -Msg "OS drive ${OSDrive}: not accessible after diskpart" -Comp "DiskPrep"
         return [PSCustomObject]@{ Success = $false; OSDriveLetter = $null; EFIPartition = $null }
     }
 
@@ -90,7 +103,7 @@ function Apply-OSImage {
         [Parameter(Mandatory)]
         [string]$ImagePath,
         [string]$TargetDrive   = "W:",
-        [int]$ImageIndex       = 2,   # Dell Image Assist WIMs: index 2 = Windows_IW (the OS)
+        [int]$ImageIndex       = 1,   # Stock Microsoft WIMs use index 1
         [scriptblock]$StatusCallback
     )
 
@@ -202,18 +215,10 @@ function Get-WimImageInfo {
     <#
     .SYNOPSIS
         Enumerates images inside a WIM file.
-        Handles Dell Image Assist WIM structure where index 2 (Windows_IW) is the OS.
-
-    Dell Image Assist WIM index layout:
-        Index 1  - BLANK1  / System       - Dell IA system partition data (not deployable)
-        Index 2  - BLANK2  / Windows_IW   - ACTUAL WINDOWS OS  <-- always deploy this
-        Index 3  - BLANK3  / Recovery     - Recovery placeholder (0 bytes)
-        Index 4  - BLANK4  / Summary_IA   - Dell IA deployment metadata
-        Index 5  - BLANK5  / Logs         - Dell IA capture logs
-
+        Designed for stock Microsoft install.wim files.
     .OUTPUTS
         Array of PSCustomObjects with Index, Name, Description, SizeBytes, SizeGB,
-        IsDeployable, IsDellIA, DisplayLabel
+        IsDeployable, DisplayLabel
     #>
     param([Parameter(Mandatory)][string]$WimPath)
 
@@ -227,7 +232,6 @@ function Get-WimImageInfo {
         if ($line -match "^Description\s*:\s*(.+)")  { $current.Description = $Matches[1].Trim() }
         if ($line -match "^Size\s*:\s*(.+)") {
             $rawSize = $Matches[1].Trim()
-            # Parse numeric bytes (remove commas)
             $bytes = 0
             [long]::TryParse(($rawSize -replace '[^0-9]',''), [ref]$bytes) | Out-Null
             $current.SizeBytes = $bytes
@@ -237,49 +241,22 @@ function Get-WimImageInfo {
         }
     }
 
-    #  Identify Dell Image Assist WIM structure 
-    # Detection: 5 indexes where index 2 description is "Windows_IW"
-    $isDellIA = $false
-    if ($images.Count -eq 5) {
-        $idx2 = $images | Where-Object { $_.Index -eq 2 }
-        if ($idx2 -and $idx2.Description -eq "Windows_IW") {
-            $isDellIA = $true
-        }
-    }
-
-    #  Annotate each index 
     foreach ($img in $images) {
-        $img | Add-Member -NotePropertyName IsDellIA     -NotePropertyValue $isDellIA
-        $img | Add-Member -NotePropertyName IsDeployable -NotePropertyValue $false
-        $img | Add-Member -NotePropertyName DisplayLabel -NotePropertyValue ""
-
-        if ($isDellIA) {
-            switch ($img.Index) {
-                1 { $img.DisplayLabel = "Index 1 -- System (Dell IA metadata, not deployable)" }
-                2 { $img.DisplayLabel = "Index 2 -- Windows OS  <- DEPLOY THIS"
-                    $img.IsDeployable  = $true }
-                3 { $img.DisplayLabel = "Index 3 -- Recovery placeholder (0 bytes)" }
-                4 { $img.DisplayLabel = "Index 4 -- Dell IA Summary (metadata only)" }
-                5 { $img.DisplayLabel = "Index 5 -- Dell IA Logs (metadata only)" }
-            }
-        } else {
-            # Standard WIM - all non-zero indexes are deployable
-            $img.IsDeployable  = ($img.SizeBytes -gt 0)
-            $img.DisplayLabel  = "Index $($img.Index) -- $($img.Name)"
-            if ($img.Description) { $img.DisplayLabel += " ($($img.Description))" }
-            if ($img.SizeGB -gt 0) { $img.DisplayLabel += " [$($img.SizeGB) GB]" }
-        }
+        $img | Add-Member -NotePropertyName IsDeployable -NotePropertyValue ($img.SizeBytes -gt 0)
+        $label = "Index $($img.Index) -- $($img.Name)"
+        if ($img.Description) { $label += " ($($img.Description))" }
+        if ($img.SizeGB -gt 0) { $label += " [$($img.SizeGB) GB]" }
+        $img | Add-Member -NotePropertyName DisplayLabel -NotePropertyValue $label
     }
 
     return $images
 }
 
-# Returns just the correct deployable index for a WIM
-# For Dell IA WIMs always returns 2; for standard WIMs returns the first deployable index
+# Returns the first deployable index (index 1 for stock Microsoft WIMs)
 function Get-DeployableImageIndex {
     param([Parameter(Mandatory)][string]$WimPath)
     $images = Get-WimImageInfo -WimPath $WimPath
     $deployable = $images | Where-Object { $_.IsDeployable } | Select-Object -First 1
     if ($deployable) { return $deployable.Index }
-    return 1  # fallback
+    return 1
 }

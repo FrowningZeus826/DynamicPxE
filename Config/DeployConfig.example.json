@@ -1,37 +1,58 @@
 {
-  "_comment": "Dell Image Assist - Deployment Configuration",
-  "_version": "1.0",
+  "_comment": "DynamicPxE - Deployment Configuration",
+  "_version": "3.0",
   "_notes": [
     "Copy this file to DeployConfig.json and fill in your environment settings.",
     "DeployConfig.json is excluded from the repository - this example file is the template.",
     "",
+    "=== Network ===",
     "ShareRoot: UNC path to your deployment share.",
     "DriveLetter: Drive letter to map the share to in WinPE (Z: recommended).",
-    "ImagesSubfolder: Subfolder under ShareRoot containing WIM files.",
+    "ImagesSubfolder: Subfolder under ShareRoot containing stock install.wim files.",
     "DriversSubfolder: Subfolder under ShareRoot containing driver ZIPs.",
+    "",
+    "=== App ===",
     "AppTitle: Displayed in the title bar and window caption.",
-    "AppVersion: Displayed in the status bar.",
-    "OrgName: Your organization name.",
-    "BuildLabel: Displayed in the title bar next to the app title.",
+    "OrgName: Your organization name (used in unattend.xml RegisteredOrganization).",
     "DefaultDomainPrefix: Pre-fills the username field (e.g. DOMAIN\\).",
-    "Timezone: Must match a valid Windows timezone name (run tzutil /l for list).",
-    "DefaultImageIndex: 2 for Dell Image Assist WIMs, 1 for standard WIMs.",
+    "",
+    "=== Deployment ===",
+    "DefaultImageIndex: 1 for stock Microsoft WIMs (standard).",
     "DefaultTargetDisk: Physical disk number to image (0 = first disk).",
     "AutoRebootSeconds: Countdown before auto-reboot after deployment.",
-    "LogoPath: Optional PNG logo file path in WinPE (leave empty to disable).",
-    "IconPath: Optional ICO file path in WinPE (leave empty to disable).",
-    "AccentColorR/G/B: RGB values for the accent color used on buttons."
+    "ComputerNameTemplate: Computer name with variables. Use %SERVICETAG%, %MODEL%, %VENDOR%.",
+    "  Example: 'PC-%SERVICETAG%' -> 'PC-ABC1234'. Max 15 chars (Windows limit).",
+    "  Leave empty to let Windows auto-name the machine.",
+    "DomainName: Active Directory domain FQDN (e.g. corp.example.com). Leave empty to skip join.",
+    "DomainOU: Target OU for computer object (e.g. OU=Workstations,DC=corp,DC=example,DC=com).",
+    "ProductKey: MAK or retail product key (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX). Leave empty to skip.",
+    "Timezone: Must match a valid Windows timezone name (run 'tzutil /l' for full list).",
+    "InputLocale: Keyboard layout (e.g. 0409:00000409 for US English).",
+    "SystemLocale: System locale (e.g. en-US).",
+    "UserLocale: User locale (e.g. en-US).",
+    "WifiSSID: WiFi network name to auto-connect after setup. Leave empty to skip.",
+    "WifiPassword: WiFi password (WPA2-PSK). Stored in SetupComplete.cmd - clear after deploy if needed.",
+    "",
+    "=== Apps ===",
+    "Apps: Array of applications to install via SetupComplete.cmd after Windows setup.",
+    "Each app object has: Name, Path (relative to SharePath), Args (silent install switches).",
+    "Apps are installed in order. Each install is logged to C:\\DynamicPxE\\Logs\\SetupComplete.log.",
+    "SharePath: UNC path to app repository (public share, no credentials needed).",
+    "DriveLetter: Drive letter to map app share to (Y: recommended, must differ from deploy share).",
+    "",
+    "=== Theme / Layout / Branding ===",
+    "See ThemeEngine.ps1 for all available color keys and defaults."
   ],
 
   "Network": {
-    "ShareRoot":        "\\\\your-server\\your-share",
+    "ShareRoot":        "\\\\your-server\\deploy-share",
     "DriveLetter":      "Z:",
     "ImagesSubfolder":  "Images",
     "DriversSubfolder": "Drivers"
   },
 
   "App": {
-    "AppTitle":            "Dell Image Assist",
+    "AppTitle":            "DynamicPxE",
     "AppVersion":          "1.0",
     "OrgName":             "Your Organization",
     "BuildLabel":          "WinPE 11  ADK 26100",
@@ -39,10 +60,58 @@
   },
 
   "Deployment": {
-    "DefaultImageIndex":  2,
-    "DefaultTargetDisk":  0,
-    "Timezone":           "Eastern Standard Time",
-    "AutoRebootSeconds":  15
+    "DefaultImageIndex":     1,
+    "DefaultTargetDisk":     0,
+    "AutoRebootSeconds":     15,
+    "ComputerNameTemplate":  "PC-%SERVICETAG%",
+    "DomainName":            "corp.example.com",
+    "DomainOU":              "OU=Workstations,DC=corp,DC=example,DC=com",
+    "ProductKey":            "",
+    "Timezone":              "Eastern Standard Time",
+    "InputLocale":           "0409:00000409",
+    "SystemLocale":          "en-US",
+    "UserLocale":            "en-US",
+    "WifiSSID":              "",
+    "WifiPassword":          ""
+  },
+
+  "Apps": {
+    "SharePath":  "\\\\your-server\\apps-share",
+    "DriveLetter": "Y:",
+    "Packages": [
+      {
+        "Name":  "Google Chrome",
+        "Path":  "Chrome\\GoogleChromeStandaloneEnterprise64.msi",
+        "Args":  "/qn /norestart"
+      },
+      {
+        "Name":  "Adobe Acrobat Reader",
+        "Path":  "AdobeReader\\AcroRdrDC_en_US.exe",
+        "Args":  "/sAll /rs /msi EULA_ACCEPT=YES"
+      },
+      {
+        "Name":  "7-Zip",
+        "Path":  "7-Zip\\7z2409-x64.msi",
+        "Args":  "/qn /norestart"
+      }
+    ]
+  },
+
+  "Theme": {
+    "Colors": {
+      "_comment": "Hex color overrides - see ThemeEngine.ps1 for all keys",
+      "Accent": "#0078D4"
+    },
+    "Fonts": {
+      "Family": "Segoe UI",
+      "BodySize": 9
+    },
+    "AnimationsEnabled": true,
+    "CornerRadius": 6
+  },
+
+  "Layout": {
+    "SidebarWidth": 220
   },
 
   "Branding": {

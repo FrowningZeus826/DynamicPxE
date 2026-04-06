@@ -24,7 +24,7 @@ if (-not (Test-Path $DismExe)) { $DismExe = "dism.exe" }
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  WinPE Dell Deploy - Build Repair" -ForegroundColor Cyan
+Write-Host "  DynamicPxE - Build Repair" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 

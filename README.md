@@ -1,32 +1,59 @@
-# Dell Image Assist - WinPE Deployment Tool
+# DynamicPxE — WinPE Zero-Touch Deployment Tool
 
-**Built by:** Spireworks  
-**Platform:** Windows ADK 26100 · Windows 11 24H2 / 25H2  
-**Target hardware:** Dell (Latitude, OptiPlex, Precision, Vostro, XPS)  
-**Architecture:** x64 only  
+**Platform:** Windows ADK 26100 · Windows 11 24H2 / 25H2
+**Target hardware:** Any x64 hardware — Dell, Lenovo, HP, and generic
+**Architecture:** x64 only
 **License:** MIT
 
 ---
 
 ## What This Is
 
-A fully custom WinPE boot environment that replaces manual imaging with a dark-themed GUI. A technician boots a Dell machine via PXE, the GUI loads automatically, detects the hardware model, auto-selects the correct Win11 driver pack from the network share, and walks the technician through selecting an OS image and starting deployment. The entire pipeline runs unattended after confirmation - disk partition, image apply, driver injection, boot configuration, and reboot.
+A fully custom WinPE live boot environment for zero-touch Windows deployment using stock Microsoft `install.wim` files. No custom images, no capture workflows, no MDT.
 
-This fills the gap left by Microsoft discontinuing MDT support for Windows 11 24H2. It is not a wrapper around MDT or SCCM - every component is purpose-built PowerShell with no external tooling dependencies beyond the Windows ADK.
+PXE boot any machine, connect to a network share, pick an OS image and driver pack, and walk away. DynamicPxE handles everything: disk partitioning, image apply, driver injection, unattend.xml generation (computer naming, domain join, product key, locale, OOBE bypass), and a `SetupComplete.cmd` that installs apps from a network share after first boot.
+
+This fills the gap left by Microsoft discontinuing MDT support for Windows 11 24H2. Every component is purpose-built PowerShell with no external tooling dependencies beyond Windows ADK.
 
 ---
 
 ## Features
 
-- **Auto hardware detection** - WMI queries the Dell model at boot, no technician input needed
-- **Driver auto-matching** - scores every ZIP on the share against the detected model, selects the best match automatically
-- **Dell Image Assist WIM support** - auto-detects the 5-index Dell IA WIM structure and applies index 2 (Windows_IW)
-- **Fully configurable** - `DeployConfig.json` controls share path, branding, colors, timezone, and more
-- **Custom branding** - logo (PNG) and icon (ICO) loaded from `Resources\` at runtime
-- **Secure Boot compatible** - built with ADK 26100, signed for current Dell UEFI firmware
-- **Auto-reboot** - machine boots directly to the new OS after deployment, no F12 needed
-- **Deployment log** - full timestamped log copied to `C:\Deploy_Log.txt` on the deployed OS
-- **Repair tool** - `Repair-Build.ps1` cleans stale DISM mounts when builds fail
+### Deploy Wizard
+- **4-page GUI** — Connect → Select → Configure → Deploy, with sidebar step tracking and back/next navigation
+- **Auto hardware detection** — WMI queries model at boot (Dell, Lenovo, HP, generic) with service tag
+- **Driver auto-matching** — 5-point scoring against ZIP filenames on the share; works with Dell, Lenovo SCCM, HP SoftPaq, and custom naming
+- **Stock WIM support** — uses `install.wim` directly from Microsoft ISOs (index 1)
+- **Fully configurable** — `DeployConfig.json` controls everything: share paths, branding, deployment settings, app installs
+
+### Zero-Touch Configuration
+- **unattend.xml generation** — built dynamically at deploy time with:
+  - Computer naming from templates (`%SERVICETAG%`, `%MODEL%`, `%VENDOR%`)
+  - Active Directory domain join with OU targeting (uses share credentials)
+  - MAK product key activation
+  - Timezone, locale, and input settings
+  - Full OOBE bypass (EULA, online account, wireless setup, OEM registration)
+  - Windows 11 BypassNRO (skips mandatory Microsoft account)
+  - Local admin account creation with auto-logon for SetupComplete.cmd
+- **SetupComplete.cmd generation** — config-driven post-setup automation:
+  - App installation from a network share (public, no credentials)
+  - Per-app success/failure logging to `C:\DynamicPxE\Logs\SetupComplete.log`
+  - WiFi profile import (auto-connect when ethernet unavailable)
+- **Config-driven defaults** — all settings come from `DeployConfig.json` but are editable in the GUI at boot time
+
+### GUI Framework
+- **Theme engine** — configurable dark theme with hex color palette, DPI-aware scaling, font registry
+- **Custom controls** — owner-drawn rounded buttons with hover animations, gradient progress bars, styled textboxes and listboxes, toast notifications
+- **Page manager** — wizard state machine with sidebar step indicators (numbered circles, checkmarks for completed steps)
+- **Animation engine** — timer-based smooth color transitions and cubic ease-out slide animations
+- **Layout helpers** — card panels with borders, form rows, full-width rows, section headers, spacer panels
+
+### Operations
+- **Sidebar lock** — sidebar navigation disabled during active deployment to prevent accidental page switches
+- **Background deployment** — runs in a separate runspace so the GUI stays responsive during long DISM operations
+- **Deployment log** — full timestamped log viewable in the GUI and written to the deployed OS
+- **Custom branding** — logo (PNG) and icon (ICO) loaded from `Resources\` at runtime
+- **Repair tool** — `Repair-Build.ps1` cleans stale DISM mounts when builds fail
 
 ---
 
@@ -34,37 +61,44 @@ This fills the gap left by Microsoft discontinuing MDT support for Windows 11 24
 
 ```
 DynamicPxE/
-├── Build-WinPE.ps1                 # ADK build script - produces boot.wim
-├── Repair-Build.ps1                # Cleans stale mounts after a failed build
-├── startnet.cmd                    # Injected into WIM - launches GUI at WinPE boot
+├── Build-WinPE.ps1                   # ADK build script — produces boot.wim
+├── Repair-Build.ps1                  # Cleans stale mounts after a failed build
+├── startnet.cmd                      # Injected into WIM — launches deploy GUI at boot
 ├── LICENSE
 ├── .gitignore
 │
 ├── Config/
-│   ├── DeployConfig.example.json   # Template - copy to DeployConfig.json
-│   └── DellDriverMap.example.json  # Template - copy to DellDriverMap.json
+│   ├── DeployConfig.example.json     # Template - copy to DeployConfig.json
+│   └── DriverMap.example.json        # Template - copy to DriverMap.json
 │
-├── Resources/                      # Branding assets (not included - add your own)
-│   └── README.txt                  # Instructions for logo.png and icon.ico
+├── Resources/                        # Branding assets (not included - add your own)
+│   └── README.txt                    # Instructions for logo.png and icon.ico
 │
 ├── Scripts/
 │   ├── Core/
-│   │   ├── Apply-Image.ps1         # Disk partitioning + DISM apply + BCDboot
-│   │   ├── Expand-DriverPack.ps1   # Extracts driver ZIPs to OS disk before injection
-│   │   ├── Inject-Drivers.ps1      # Offline DISM driver injection into applied OS
-│   │   ├── Invoke-Deployment.ps1   # Orchestrator - chains all deployment steps
-│   │   └── Map-NetworkShare.ps1    # Authenticates and maps the deployment share
-│   ├── Dell/
-│   │   ├── Get-DellModel.ps1       # WMI hardware detection
-│   │   └── Get-DellDriverPack.ps1  # Driver pack scoring and auto-match engine
+│   │   ├── Apply-Image.ps1           # Disk partitioning + DISM apply + BCDboot
+│   │   ├── Expand-DriverPack.ps1     # Extracts driver ZIPs to OS disk before injection
+│   │   ├── Inject-Drivers.ps1        # Offline DISM driver injection into applied OS
+│   │   ├── Invoke-Deployment.ps1     # Orchestrator — chains all steps + generates unattend/SetupComplete
+│   │   └── Map-NetworkShare.ps1      # Authenticates and maps the deployment share
+│   ├── Hardware/
+│   │   ├── Get-HardwareModel.ps1     # WMI hardware detection — multi-vendor
+│   │   └── Get-DriverPack.ps1        # Driver pack scoring and auto-match — vendor-agnostic
 │   ├── GUI/
-│   │   └── Start-DeployGUI.ps1     # WinForms GUI - two-column landscape layout
+│   │   ├── Start-DeployGUI.ps1       # Deploy wizard — 4-page sidebar layout
+│   │   └── Framework/
+│   │       ├── Initialize-GUIFramework.ps1  # Master loader — dot-source this one file
+│   │       ├── ThemeEngine.ps1        # Color palette, fonts, DPI scaling
+│   │       ├── LayoutHelpers.ps1      # App shell, card panels, form rows
+│   │       ├── AnimationEngine.ps1    # Hover transitions, slide animations
+│   │       ├── CustomControls.ps1     # Rounded buttons, progress bars, toast notifications
+│   │       └── PageManager.ps1        # Wizard page state machine + sidebar steps
 │   └── Logging/
-│       └── Write-DeployLog.ps1     # Structured timestamped logging
+│       └── Write-DeployLog.ps1       # Structured timestamped logging
 │
 └── Docs/
-    ├── Deployment.md               # Full step-by-step build and deployment guide
-    └── Reference.md                # Script API, architecture, troubleshooting
+    ├── Deployment.md                 # Full step-by-step build and deployment guide
+    └── Reference.md                  # Script API, architecture, troubleshooting
 ```
 
 ---
@@ -76,157 +110,183 @@ Full instructions are in `Docs/Deployment.md`. In brief:
 **1. Prerequisites**
 - Windows ADK 26100 (Deployment Tools only)
 - WinPE Add-on for ADK 26100
-- Dell WinPE 11 Driver Pack (CAB file from Dell support)
+- Vendor WinPE driver CAB (Dell, Lenovo, HP — from your vendor's support site)
 
 **2. Set up the project folder**
 ```powershell
 mkdir C:\DynamicPxE
 # Copy all repo files into C:\DynamicPxE\
-# Extract Dell WinPE CAB into C:\DynamicPxE\DellWinPEDrivers\
-expand.exe -F:* "WinPE11.0-Drivers-A01.cab" C:\DynamicPxE\DellWinPEDrivers
+
+# Extract your WinPE driver CAB into WinPEDrivers\
+# Dell example:
+expand.exe -F:* "WinPE11.0-Drivers-A01.cab" C:\DynamicPxE\WinPEDrivers
 ```
 
 **3. Configure your environment**
-
-Both config files are excluded from the repo. Copy the example files and fill in your settings:
 ```powershell
 Copy-Item Config\DeployConfig.example.json  Config\DeployConfig.json
-Copy-Item Config\DellDriverMap.example.json Config\DellDriverMap.json
+Copy-Item Config\DriverMap.example.json     Config\DriverMap.json
 ```
 
-Then edit `Config\DeployConfig.json` with your share path and org settings:
+Edit `Config\DeployConfig.json` — at minimum set your share paths:
 ```json
-"Network": {
-    "ShareRoot": "\\\\your-server\\your-share",
-    "DriveLetter": "Z:"
+{
+  "Network": {
+    "ShareRoot": "\\\\your-server\\deploy-share"
+  },
+  "Deployment": {
+    "ComputerNameTemplate": "PC-%SERVICETAG%",
+    "DomainName": "corp.example.com",
+    "DomainOU": "OU=Workstations,DC=corp,DC=example,DC=com"
+  },
+  "Apps": {
+    "SharePath": "\\\\your-server\\apps-share",
+    "Packages": [
+      { "Name": "Chrome", "Path": "Chrome\\GoogleChromeStandaloneEnterprise64.msi", "Args": "/qn /norestart" }
+    ]
+  }
 }
 ```
 
-**4. Add branding (optional)**
-
-Drop `logo.png` and `icon.ico` into `Resources\` and update the paths in `DeployConfig.json`.
-
-**5. Build**
+**4. Build**
 ```powershell
 cd C:\DynamicPxE
 .\Build-WinPE.ps1
 ```
 
-**6. Deploy**
+**5. Deploy**
 - Upload `boot.wim` to WDS → Boot Images → Add Boot Image
-- Place OS WIM files in your share's `Images\` folder
-- Place Dell driver ZIPs in your share's `Drivers\` folder
-- PXE boot a Dell machine
+- Place stock `install.wim` files in your share's `Images\` folder
+- Place driver ZIPs in your share's `Drivers\` folder
+- PXE boot a machine — the deploy wizard launches automatically
 
 ---
 
 ## Configuration
 
-All settings live in `Config\DeployConfig.json`. Key sections:
+### DeployConfig.json
 
 | Section | Key settings |
 |---|---|
 | `Network` | Share UNC path, drive letter, Images/Drivers subfolder names |
 | `App` | Window title, version, org name, build label, domain prefix |
-| `Deployment` | Default image index, target disk, timezone, reboot countdown |
-| `Branding` | Logo path, icon path, accent color RGB |
+| `Deployment` | Computer name template, domain/OU, product key, timezone, locale, WiFi, image index, target disk |
+| `Apps` | App share path, drive letter, packages array (Name, Path, Args) |
+| `Theme.Colors` | Hex color overrides for all palette entries (Background, Surface, Accent, etc.) |
+| `Theme.Fonts` | Font family, sizes for body/heading/title/small/mono |
+| `Theme` | AnimationsEnabled (bool), CornerRadius (int) |
+| `Branding` | Logo path, icon path |
+
+### Configure Page (GUI)
+
+All deployment settings from the config file are editable at boot time in the GUI:
+
+| Card | Editable fields |
+|---|---|
+| Deployment Options | Target disk, image index |
+| OS Configuration | Computer name template, domain, OU, product key, timezone |
+| WiFi | SSID, password |
+| Post-Setup Apps | Read-only display of configured app installs |
 
 ---
 
 ## Network Share Layout
 
 ```
-\\your-server\your-share\
+Deploy Share (\\your-server\deploy-share):
 ├── Images\
-│   └── *.wim  (Dell Image Assist or standard WIM files)
+│   ├── Win11_24H2_Enterprise_x64.wim    (stock install.wim from ISO)
+│   └── Win11_23H2_Pro_x64.wim
 └── Drivers\
-    └── *.zip  (Dell driver packs in standard naming format)
+    ├── win11_latitude5550_a19.zip        (Dell)
+    ├── lenovo_thinkpadx1carbon_win11.zip (Lenovo)
+    └── hp_elitebook840g10_win11.zip      (HP)
+
+App Share (\\your-server\apps-share):     (public, no credentials)
+├── Chrome\
+│   └── GoogleChromeStandaloneEnterprise64.msi
+├── AdobeReader\
+│   └── AcroRdrDC_en_US.exe
+└── 7-Zip\
+    └── 7z2409-x64.msi
 ```
-
-Driver packs use Dell's standard ZIP naming: `{os}_{familytoken}_{revision}.zip`  
-Example: `win11_latitudee14mlk5530_a16.zip`
-
-No pre-extraction needed - the system extracts ZIPs to the OS disk at deploy time and cleans up automatically.
-
----
-
-## Driver Auto-Matching
-
-When the share connects, every ZIP is scored against the detected WMI model string:
-
-1. **Model score** - 4-digit model number match against ZIP filename token
-2. **OS preference** - `win11_*` beats `win10_*` at equal score
-3. **Revision** - higher `a` number wins at equal score
-
-The auto-matched pack is highlighted and pre-selected. Technicians can override by selecting any pack from the list.
-
-`DellDriverMap.json` handles edge cases where auto-scoring picks the wrong pack (e.g. two win11 packs with identical scores). Add an entry to pin a specific ZIP to a specific model key.
-
----
-
-## Dell Image Assist WIM Structure
-
-Dell Image Assist captures produce 5-index WIMs. Only index 2 is deployable:
-
-| Index | Description | Deploy? |
-|---|---|---|
-| 1 | System - Dell IA metadata | No |
-| 2 | Windows_IW - the OS | **Yes** |
-| 3 | Recovery - placeholder | No |
-| 4 | Summary_IA - metadata | No |
-| 5 | Logs - capture logs | No |
-
-The GUI auto-detects this structure and sets the index field to 2 automatically.
 
 ---
 
 ## Deployment Pipeline
 
 ```
-PXE boot → WinPE loads → GUI launches
-    ↓
-Enter share credentials → share mapped to Z:\
-    ↓
-Hardware detected → driver pack auto-matched → image selected → confirm
-    ↓
-1. diskpart   - GPT: EFI(260MB) + MSR(16MB) + OS + Recovery(650MB)
-2. Expand     - driver ZIP extracted to W:\DriverTemp\
-3. DISM       - OS image applied to W:\ (index 2 for Dell IA WIMs)
-4. DISM       - drivers injected offline into W:\
-5. BCDboot    - UEFI boot configured on EFI partition
-6. bcdedit    - one-time boot sequence set to Windows Boot Manager
-7. Cleanup    - driver temp removed, Deploy_Info.json written to W:\
-8. Log copy   - deploy.log copied to W:\Deploy_Log.txt
-9. Reboot     - 15-second countdown, machine boots to new OS
+PXE boot -> WinPE loads -> Deploy wizard launches automatically
+    |
+Page 1: Connect -> credentials + share mapping
+    |
+Page 2: Select -> image list + driver list (auto-selected for detected hardware)
+    |
+Page 3: Configure -> deployment options, OS config, WiFi, apps display
+    |
+Confirm dialog -> Page 4: Deploy (sidebar locked)
+    |
+ 1. diskpart    -- GPT: EFI(260MB) + MSR(16MB) + OS + Recovery(650MB)
+ 2. DISM        -- stock install.wim applied to W:\
+ 3. ZIP extract -- driver pack extracted to W:\DriverTemp\
+ 4. DISM        -- drivers injected offline into W:\
+ 5. unattend    -- generated and written to W:\Windows\Panther\unattend.xml
+ 6. SetupComplete -- generated: WiFi import + app installs from network share
+ 7. BCDboot     -- UEFI boot configured on EFI partition
+ 8. Cleanup     -- Deploy_Info.json written, log saved
+ 9. Reboot      -- machine boots to new OS -> zero-touch OOBE
 ```
+
+**After reboot**, Windows processes the unattend.xml (domain join, naming, licensing, OOBE bypass, local admin creation) and runs SetupComplete.cmd (WiFi profile import, app installs with logging).
 
 ---
 
-## Extending for Other Manufacturers
+## Driver Auto-Matching
 
-The architecture supports multi-vendor expansion:
+When the network share connects, every ZIP is scored against the detected WMI model string. The best match (score >= 3) is automatically selected.
 
-- Add `Scripts/Lenovo/Get-LenovoModel.ps1`
-- Add `Scripts/Lenovo/Get-LenovoDriverPack.ps1`
-- Uncomment the `# FUTURE: Lenovo` branch in `Invoke-Deployment.ps1`
+1. **JSON override** — `DriverMap.json` pins specific ZIPs to specific model keys (escape hatch)
+2. **Model number** — 4-digit model number match against ZIP filename token (most reliable)
+3. **OS preference** — `win11_*` beats `win10_*` at equal score
+4. **Revision** — higher `a` number wins at equal score
 
-The GUI, core imaging scripts, and build script require no changes.
+Supports Dell, Lenovo, HP, and any custom ZIP naming that includes the model string.
+
+---
+
+## Testing the GUI Locally
+
+You can test the GUI on a regular Windows machine without rebuilding the WIM:
+
+```powershell
+# From the repo root on your Windows machine:
+. .\Scripts\Logging\Write-DeployLog.ps1
+. .\Scripts\GUI\Framework\Initialize-GUIFramework.ps1
+. .\Scripts\GUI\Start-DeployGUI.ps1
+```
+
+What works locally: all visual rendering, page navigation, sidebar, animations, theming, DPI scaling.
+What will error: network share mapping, `X:\Deploy\` paths, diskpart/DISM commands (don't click Deploy).
 
 ---
 
 ## Troubleshooting
 
-**Build fails at step 3** - stale DISM mount. Run `.\Repair-Build.ps1` then rebuild.
+**Build fails at step 3** — stale DISM mount. Run `.\Repair-Build.ps1` then rebuild.
 
-**GUI shows `\\server\share`** - `DeployConfig.json` not in the WIM. Verify the file is in `Config\` before building.
+**GUI shows `\\server\share`** — `DeployConfig.json` not in the WIM. Verify the file is in `Config\` before building.
 
-**DISM apply fails (exit 123)** - invalid path. Ensure the share is accessible and `ShareRoot` in config is correct.
+**DISM apply fails** — verify the share is accessible and `ShareRoot` in config is correct. Check `X:\Windows\Logs\DISM\dism.log`.
 
-**Drivers not injecting** - driver ZIP too large for RAM disk. Fixed in current version - extracts to `W:\DriverTemp\` on the OS disk instead.
+**Drivers not injecting** — driver ZIP too large for RAM disk. Current version extracts to `W:\DriverTemp\` on the OS disk.
 
-**Machine doesn't auto-boot to SSD** - `bcdedit` boot sequence. Fixed in current version.
+**Driver not auto-selected** — scoring engine requires match score >= 3. Check the deployment log. Add an override in `DriverMap.json` if needed.
 
-**Full deployment log** - available at `C:\Deploy_Log.txt` on the deployed OS after first boot.
+**Domain join fails** — verify the domain name and credentials. The share credentials are reused for domain join. The username must not include a domain prefix (e.g. use `svc-deploy`, not `DOMAIN\svc-deploy`). Check `C:\Windows\debug\NetSetup.LOG` on the deployed OS.
+
+**Apps not installing** — check `C:\DynamicPxE\Logs\SetupComplete.log` on the deployed OS. Verify the app share is accessible (public, no auth) and paths in config are correct.
+
+**Full deployment log** — available at `C:\Deploy_Log.txt` on the deployed OS after first boot.
 
 ---
 
@@ -237,7 +297,9 @@ The GUI, core imaging scripts, and build script require no changes.
 | Build machine | Windows 10/11 x64, Administrator access |
 | ADK | Windows ADK 26100 (Deployment Tools) |
 | WinPE Add-on | ADK 26100 WinPE Add-on |
-| Dell WinPE Drivers | Dell WinPE 11 Driver Pack (CAB) |
-| Network share | SMB share accessible from WinPE |
-| Target machines | Dell x64 hardware, UEFI, Secure Boot optional |
+| WinPE Drivers | Vendor WinPE driver CAB extracted to `WinPEDrivers\` |
+| Deploy share | SMB share accessible from WinPE (credentials prompted) |
+| App share | SMB share accessible from deployed OS (public, no credentials) |
+| OS images | Stock `install.wim` from Microsoft Windows ISO |
+| Target machines | x64 hardware, UEFI, Secure Boot optional |
 | WDS/PXE | Any WDS server or PXE environment |

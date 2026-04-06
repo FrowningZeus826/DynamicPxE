@@ -33,7 +33,7 @@ $DismExe     = Join-Path $DeployTools "AMD64\DISM\dism.exe"
 
 $ScriptsSrc  = Join-Path $ProjectRoot "Scripts"
 $ConfigSrc   = Join-Path $ProjectRoot "Config"
-$DriversDir  = Join-Path $ProjectRoot "DellWinPEDrivers"
+$DriversDir  = Join-Path $ProjectRoot "WinPEDrivers"
 
 # ── Helpers ───────────────────────────────────────────────────
 function Write-Step { param($n, $msg) Write-Host "" ; Write-Host "[$n/9] $msg" -ForegroundColor Cyan }
@@ -70,7 +70,7 @@ function Add-WinPEPackage {
 # ══════════════════════════════════════════════════════════════
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  WinPE Dell Deploy - Build Script" -ForegroundColor Cyan
+Write-Host "  DynamicPxE - Build Script" -ForegroundColor Cyan
 Write-Host "  ADK 26100 / Windows 11 24H2" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -183,9 +183,9 @@ Write-Step 6 "Injecting deployment scripts..."
 
 $peRoot = Join-Path $MountDir "Deploy"
 foreach ($dir in @(
-    "$peRoot\Scripts\Core",   "$peRoot\Scripts\Dell",
-    "$peRoot\Scripts\GUI",    "$peRoot\Scripts\Logging",
-    "$peRoot\Config",         "$peRoot\Logs"
+    "$peRoot\Scripts\Core",     "$peRoot\Scripts\Hardware",
+    "$peRoot\Scripts\GUI",      "$peRoot\Scripts\Logging",
+    "$peRoot\Config",           "$peRoot\Logs"
 )) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 
 Copy-Item (Join-Path $ScriptsSrc "*") (Join-Path $peRoot "Scripts") -Recurse -Force
@@ -212,14 +212,14 @@ Write-OK "Scripts, config, and startnet.cmd injected"
 $psProfileDir = Join-Path $MountDir "Windows\System32\WindowsPowerShell\v1.0"
 New-Item -ItemType Directory -Path $psProfileDir -Force | Out-Null
 @'
-# WinPE Dell Deploy - PowerShell profile
+# DynamicPxE - PowerShell profile
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 '@ | Set-Content (Join-Path $psProfileDir "profile.ps1") -Encoding UTF8
 Write-OK "PowerShell profile written"
 
-# ── Step 7: Inject Dell WinPE drivers ─────────────────────────
-Write-Step 7 "Injecting Dell WinPE drivers..."
+# ── Step 7: Inject WinPE drivers ──────────────────────────────
+Write-Step 7 "Injecting WinPE drivers..."
 
 if (Test-Path $DriversDir) {
     $infCount = (Get-ChildItem $DriversDir -Filter "*.inf" -Recurse -ErrorAction SilentlyContinue).Count
@@ -227,16 +227,18 @@ if (Test-Path $DriversDir) {
         Write-Host "      Found $infCount INF files - injecting..."
         try {
             Invoke-Dism @("/Image:$MountDir", "/Add-Driver", "/Driver:$DriversDir", "/Recurse", "/ForceUnsigned")
-            Write-OK "Dell WinPE drivers injected"
+            Write-OK "WinPE drivers injected"
         } catch {
             Write-Warn "Some drivers failed to inject - build will continue."
             Write-Warn "Verify NIC and storage work on first WinPE boot."
         }
     } else {
-        Write-Warn "DellWinPEDrivers\ is empty. Extract the Dell WinPE CAB first."
+        Write-Warn "WinPEDrivers\ is empty. Extract your WinPE driver CAB first."
+        Write-Warn "Example: expand.exe -F:* <YourWinPE.cab> .\WinPEDrivers\"
     }
 } else {
-    Write-Warn "DellWinPEDrivers\ not found. WinPE may not see NIC or NVMe on Dell hardware."
+    Write-Warn "WinPEDrivers\ not found. WinPE may not detect NIC or NVMe storage."
+    Write-Warn "Create WinPEDrivers\ and extract your vendor's WinPE driver CAB into it."
 }
 
 # ── Step 8: Verify ────────────────────────────────────────────
@@ -267,7 +269,7 @@ Write-Host "============================================================" -Foreg
 Write-Host ""
 Write-Host "  Next steps:"
 Write-Host "  1. WDS Console > Boot Images > Add Boot Image (or Replace)"
-Write-Host "  2. Images:  Place WIM files in your configured share Images\ folder"
-Write-Host "  3. Drivers: Place driver ZIPs in your configured share Drivers\ folder"
-Write-Host "  4. PXE boot a Dell and verify the GUI appears"
+Write-Host "  2. Images:  Place stock install.wim files in your share Images\ folder"
+Write-Host "  3. Drivers: Place driver ZIPs in your share Drivers\ folder"
+Write-Host "  4. PXE boot a machine - the deploy wizard launches automatically"
 Write-Host ""

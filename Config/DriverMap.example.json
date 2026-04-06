@@ -1,0 +1,40 @@
+{
+  "_comment": "DynamicPxE - Driver Pack Override Map",
+  "_version": "2.0",
+  "_notes": [
+    "Copy this file to DriverMap.json and add overrides as needed.",
+    "DriverMap.json is excluded from the repository - this example file is the template.",
+    "",
+    "This file is an escape hatch for edge cases where the auto-scoring engine",
+    "picks the wrong driver pack. In normal operation with standard ZIP naming",
+    "you do not need to add any entries here.",
+    "",
+    "Mappings is an array of objects. Each object maps a model key to either",
+    "a ZipFile (filename on the share) or a DriverFolder (pre-extracted folder name).",
+    "",
+    "The model key is the lowercase WMI model string with spaces replaced by hyphens.",
+    "Example: 'Latitude 5550' -> 'latitude-5550'",
+    "Example: 'ThinkPad E16 Gen 1' -> 'thinkpad-e16-gen-1'",
+    "",
+    "To find your model key: boot into WinPE and check the deploy.log,",
+    "or run: (Get-CimInstance Win32_ComputerSystem).Model"
+  ],
+
+  "Mappings": [
+    {
+      "_comment": "Example Dell override",
+      "ModelKey": "latitude-0000",
+      "ZipFile":  "win11_latitudeXXXX_a00.zip"
+    },
+    {
+      "_comment": "Example Lenovo override",
+      "ModelKey": "thinkpad-e16-gen-1",
+      "ZipFile":  "lenovo_thinkpade16g1_win11_a03.zip"
+    },
+    {
+      "_comment": "Example pre-extracted folder (no ZIP)",
+      "ModelKey":      "latitude-5530",
+      "DriverFolder":  "win11_latitudee14mlk5530_a16"
+    }
+  ]
+}

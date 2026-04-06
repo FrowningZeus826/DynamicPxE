@@ -1,5 +1,5 @@
 # ============================================================
-#  Dell Image Assist - WinPE Deployment Tool
+#  DynamicPxE - WinPE Deployment Tool
 #  .gitignore
 # ============================================================
 
@@ -8,14 +8,14 @@ boot.wim
 *.wim
 Build/
 
-# ── Dell WinPE drivers (large, extracted from CAB)
-DellWinPEDrivers/
+# ── WinPE drivers (large, extracted from vendor CAB)
+WinPEDrivers/
 
 # ── Site-specific config (contains sensitive environment info)
-# Copy DeployConfig.example.json  -> DeployConfig.json  and fill in your settings
-# Copy DellDriverMap.example.json -> DellDriverMap.json and add any overrides needed
+# Copy DeployConfig.example.json -> DeployConfig.json  and fill in your settings
+# Copy DriverMap.example.json    -> DriverMap.json     and add any overrides needed
 Config/DeployConfig.json
-Config/DellDriverMap.json
+Config/DriverMap.json
 
 # ── Branding assets (org-specific, not for public repo)
 Resources/*.png
